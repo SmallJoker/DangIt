@@ -1,0 +1,9 @@
+# Binary directory
+bin/
+
+# Binary files
+*.exe
+*.dll
+
+# Other files
+*.bat

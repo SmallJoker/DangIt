@@ -5,17 +5,25 @@ project(DangIt)
 # Source files
 set(SRC_FILES
 	main.cpp
-	scriptParser.cpp
+	element_simplifier.cpp
+	opcodes.cpp
+	script_parser.cpp
 )
 
 # Include Directories
-include_directories(
-	${PROJECT_SOURCE_DIR}
-)
+include_directories(${PROJECT_SOURCE_DIR})
+
+
+# Compiler specific configurations
+if (MSVC)
+
+else ()
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+endif ()
+
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
 target_link_libraries(
 	${PROJECT_NAME}
-	${LUA_LIBRARY}
 )

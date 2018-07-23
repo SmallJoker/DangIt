@@ -1,5 +1,6 @@
 # Binary directory
 bin/
+.*/
 
 # Binary files
 *.exe
@@ -7,3 +8,4 @@ bin/
 
 # Other files
 *.bat
+*.kdev*

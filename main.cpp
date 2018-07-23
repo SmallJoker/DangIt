@@ -1,6 +1,14 @@
 // main.cpp - Only for console-specific code
 #include "headers.h"
 
+void dump(const std::string &name, const ElementList &el)
+{
+	std::cout << "Dump of variable " << name << std::endl;
+	for (const Element &e : el) {
+		printf("\ttype=%i flags=%X prior=%i\n", e.type, e.flags, e.priority);
+	}
+}
+
 #define DEBUG
 int main(int argc, char *argv[])
 {
@@ -22,9 +30,14 @@ int main(int argc, char *argv[])
 
 	VariableList vars;
 	ElementList elements;
+	ElementList operator_stack;
 	ParseData pd(&is);
-	readNextFromRaw(pd, vars, elements);
+	while (is.good())
+		readNextFromRaw(pd, vars, elements, operator_stack);
 	cout << "Balance: " << (int)pd.balance.top() << endl;
+	dump("Elements", elements);
+	dump("Operator Stack", operator_stack);
+
 	simplifyElements(vars, elements);
 	/*
 		number myvar = 33 * (5 - 2) + othervar

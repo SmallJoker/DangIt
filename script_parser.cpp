@@ -11,14 +11,14 @@
 
 inline const OpCodeInformation* getOperator(ParseData &pd, char c)
 {
-	int8_t &balance = pd.balance.top();
+	const int8_t balance = pd.balance.top(); // Value balance for the current scope
 	const OpCodeInformation *inf = nullptr;
 
 	// Hacky
-	std::string txt(to_string(c));
+	std::string txt(1, c);
 	char d = pd.is->peek();
 	if (d == '=' || d == '-' || d == '+') {
-		txt.append(to_string(d));
+		txt.append(1, d);
 		pd.is->get(d);
 	}
 
@@ -28,15 +28,15 @@ inline const OpCodeInformation* getOperator(ParseData &pd, char c)
 			continue;
 
 		int l_diff = balance - std::max(i.nary, (int8_t)0);
+		// Find lowest balance change (prefer unary operations)
 		if (l_diff < balance_diff) {
 			inf = &i;
 			balance_diff = l_diff;
 		}
 	}
-	if (inf) {
-		balance -= inf->nary;
+
+	if (inf)
 		return inf;
-	}
 
 	switch (c) {
 	case '(':
@@ -66,7 +66,8 @@ inline const OpCodeInformation* getOperator(ParseData &pd, char c)
 	return nullptr;
 }
 
-void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el)
+void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
+	ElementList &operator_stack)
 {
 	stringstream value;
 	const OpCodeInformation *operation = nullptr;
@@ -210,8 +211,6 @@ read_complete:
 		.priority = (uint16_t)(pd.parentheses << 8),
 		.val = {0}
 	};
-	if (operation)
-		e.priority |= operation->opcode;
 
 	switch (etype) {
 	case ETYPE::NONE:
@@ -225,6 +224,10 @@ read_complete:
 	break;
 	case ETYPE::FLOAT:
 		e.val.f = atof(text.c_str());
+	break;
+	case ETYPE::OPERATION:
+		e.priority |= operation->opcode;
+		e.val.op = new OpCodeInformation(*operation);
 	break;
 	case ETYPE::VARIABLE:
 		// TODO: 'if', 'else', 'goto' and such
@@ -244,27 +247,35 @@ read_complete:
 	break;
 	}
 
-	ElementList::iterator it = el.end();
-	if (el.size() > 0 && pd.balance.top() < 0) {
-		Element back = el.back();
-		if (back.type == ETYPE::OPERATION) {
-			/*uint8_t opcode = back.priority & 0xFF;
-			for (const OpCodeInformation &inf : op_lookup) {
-				if (inf.opcode != opcode)
-					continue;
+	const int8_t balance = pd.balance.top(); // 0
 
-				// TODO: only works for nary = -1
-				if (inf.nary < 0)
-					it--;
-				break;
-			}*/
-			it--;
+	if (e.type == ETYPE::OPERATION) {
+		if (std::abs(e.val.op->nary) > balance) {
+			while (operator_stack.size() > 0) {
+				if (e.priority <= operator_stack.back().priority) {
+					// a * b +
+					// Move from operator stack to element list
+					el.push_back(operator_stack.back());
+					operator_stack.pop_back();
+				} else {
+					break;
+				}
+			}
+			// Not enough values. Delay use of operator
+			operator_stack.push_back(e);
 		} else {
-			errorstream << "Balance destroyed. What do do?" << endl;
+			errorstream << "Is this inline notation? " << (int)balance
+				<< PRINT_DEBUG(c, pd);
 		}
+	} else {
+		// Value first, operator afterwards
+		el.push_back(e);
 	}
-	el.insert(it, e);
+
+	// TODO Put left-over operator stack contents into element list
 
 	if (etype != ETYPE::OPERATION)
 		pd.balance.top()++; // +1 for values, -x for operators
+	else
+		pd.balance.top() += -std::abs(e.val.op->nary) + 1; // Takes N elements, adds 1 result
 }

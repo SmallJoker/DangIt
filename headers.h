@@ -71,6 +71,7 @@ union Value {
 	string *sp;
 	// For arrays?
 	ElementList *vl;
+	OpCodeInformation *op;
 };
 
 // Operators and variable references
@@ -104,4 +105,4 @@ struct ParseData {
 
 
 void simplifyElements(VariableList &vl, ElementList &el);
-void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el);
+void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el, ElementList &operator_stack);

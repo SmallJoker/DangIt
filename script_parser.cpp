@@ -5,14 +5,15 @@
 
 #define PRINT_DEBUG(c, pd)              \
 	   "\n\tChar: " << (c)              \
-	<< "\n\tLine: " << (pd).line_nr     \
-	<< "\n\tPos:  " << (pd).is->tellg() \
+	<< "\n\tWhere: " << (pd).line_nr     \
+	<< ":" << (pd).char_pos        \
+	<< "\n\tBalance: " << (int)(pd).balance.top() \
 	<< endl
 
-inline const OpCodeInformation* getOperator(ParseData &pd, char c)
+inline bool getOperator(ParseData &pd, char c, const OpCodeInformation *&inf)
 {
 	const int8_t balance = pd.balance.top(); // Value balance for the current scope
-	const OpCodeInformation *inf = nullptr;
+	inf = nullptr;
 
 	// Hacky
 	std::string txt(1, c);
@@ -22,7 +23,7 @@ inline const OpCodeInformation* getOperator(ParseData &pd, char c)
 		pd.is->get(d);
 	}
 
-	int balance_diff = 0;
+	int balance_diff = 1;
 	for (const OpCodeInformation &i : op_lookup) {
 		if (!i.pattern || i.pattern != txt)
 			continue;
@@ -35,35 +36,7 @@ inline const OpCodeInformation* getOperator(ParseData &pd, char c)
 		}
 	}
 
-	if (inf)
-		return inf;
-
-	switch (c) {
-	case '(':
-		pd.parentheses++;
-		pd.balance.push(0);
-		break;
-	case ')':
-		pd.parentheses--;
-		if (pd.parentheses < 0)
-			errorstream << "Unexpected character " << PRINT_DEBUG(c, pd);
-		if (balance != 0)
-			errorstream << "Operation balance != 0 " << PRINT_DEBUG(c, pd);
-		pd.balance.pop();
-		break;
-	case ';':
-		if (pd.parentheses > 0)
-			errorstream << "Unclosed parentheses" << PRINT_DEBUG(c, pd);
-		if (balance != 0)
-			errorstream << "Operation balance != 0 " << PRINT_DEBUG(c, pd);
-		break;
-	default:
-		// Unknown expression
-		errorstream << "Unknown expression" << PRINT_DEBUG(c, pd);
-		break;
-	}
-
-	return nullptr;
+	return inf ? true : false; // Read further
 }
 
 void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
@@ -77,11 +50,13 @@ void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
 	char c;
 
 	while (pd.is->get(c)) {
+		pd.char_pos++;
 
 	#if 1 // Skip spaces and comments
 		if (isspace(c)) {
 			if (c == '\n') {
 				pd.line_nr++;
+				pd.char_pos = 0;
 
 				// Reset single line comments
 				if (comment_type == 1) {
@@ -92,8 +67,8 @@ void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
 			// Wait for it (= the element)
 			if (etype == ETYPE::NONE)
 				continue;
-			if (etype != ETYPE::STRING)
-				break;
+			//if (etype != ETYPE::STRING)
+			//	break;
 		}
 
 		// Handle multiline comments
@@ -119,36 +94,34 @@ void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
 			}
 		}
 	#endif
-
 		switch (etype) {
-		case ETYPE::NONE: {
+		case ETYPE::NONE:
 			// Handle string detection first to not get '"' in our string value
 			if (c == '"') {
 				etype = ETYPE::STRING;
-				break;
+				continue;
 			}
 			value << c;
 			if (isalpha(c) || c == '_') {
 				etype = ETYPE::VARIABLE;
-				break;
+				continue;
 			}
 			if (c >= '0' && c <= '9') {
 				// Can be changed later to float when a wild '.' appears
 				etype = ETYPE::INT;
-				break;
+				continue;
 			}
 			if (c == '.') {
 				etype = ETYPE::FLOAT;
-				break;
+				continue;
 			}
-			// Otherwise: Operator
-			operation = getOperator(pd, c);
-			if (!operation)
-				return; // Nothing to add
 
-			etype = ETYPE::OPERATION;
-			// Reading complete
-			goto read_complete;
+			getOperator(pd, c, operation);
+
+			// Otherwise: Operator
+			if (operation) {
+				etype = ETYPE::OPERATION;
+				goto read_complete;
 			}
 		break;
 		case ETYPE::STRING:
@@ -160,16 +133,16 @@ void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
 					// String complete
 					goto read_complete;
 				}
-				break;
+				continue;
 			}
 			if (c == '\\') {
 				string_escape ^= true;
 				if (string_escape)
-					break; // Ignore escape character
+					continue; // Ignore escape character
 			}
 			// Extend string
 			value << c;
-		break;
+		continue;
 		case ETYPE::INT:
 		case ETYPE::FLOAT:
 			if (c == '.') {
@@ -178,28 +151,59 @@ void readNextFromRaw(ParseData &pd, VariableList &vl, ElementList &el,
 					etype = ETYPE::FLOAT;
 				} else { // type == ETYPE::FLOAT
 					// There are no two decimal points in a decimal
-					warningstream << "Invalid number near " << PRINT_DEBUG(c, pd);
+					errorstream << "Invalid number near " << PRINT_DEBUG(c, pd);
+					return;
 				}
 				value << c;
-				break;
+				continue;
 			}
 			if (c >= '0' && c <= '9') {
 				value << c;
-				break;
+				continue;
 			}
-			warningstream << "Invalid number near " << c << PRINT_DEBUG(c, pd);
 		break;
 		case ETYPE::VARIABLE:
 			if (isalnum(c) || c == '_') {
 				value << c;
-				break;
+				continue;
 			}
-			errorstream << "Invalid variable character: " << PRINT_DEBUG(c, pd);
 		break;
 		default:
 			warningstream << "Type not implemented: " << etype << PRINT_DEBUG(c, pd);
 			return;
 		}
+
+		// Unhandled character
+		switch (c) {
+		case '(':
+			pd.parentheses++;
+			pd.balance.push(0);
+			break;
+		case ')':
+			pd.parentheses--;
+			if (pd.parentheses < 0)
+				errorstream << "Unexpected character " << PRINT_DEBUG(c, pd);
+			if (pd.balance.top() != 0) // Not 1 because the variable is added later
+				errorstream << "Operation balance != 0 " << PRINT_DEBUG(c, pd);
+			pd.balance.pop();
+			if (etype == ETYPE::NONE)
+				pd.balance.top()++;
+			break;
+		case ';':
+			if (pd.parentheses > 0)
+				errorstream << "Unclosed parentheses" << PRINT_DEBUG(c, pd);
+			if (pd.balance.top() != 0)
+				errorstream << "Operation balance != 0 " << PRINT_DEBUG(c, pd);
+			return;
+		default:
+			pd.is->unget();
+			break;
+		}
+		// Cannot do anything with this character. What to do?
+		if (etype == ETYPE::NONE)
+			continue;
+		else
+			break;
 	}
 
 read_complete:
@@ -248,6 +252,10 @@ read_complete:
 	}
 
 	const int8_t balance = pd.balance.top(); // 0
+	cout << "Adding " << (int)e.type
+		<< ", pos=" << (int)pd.char_pos
+		<< ", stack=" << (int)balance
+		<< endl;
 
 	if (e.type == ETYPE::OPERATION) {
 		if (std::abs(e.val.op->nary) > balance) {
@@ -264,7 +272,9 @@ read_complete:
 			// Not enough values. Delay use of operator
 			operator_stack.push_back(e);
 		} else {
-			errorstream << "Is this inline notation? " << (int)balance
+			errorstream << "Is this inline notation? "
+				<< "\n\tBalance = " << (int)balance
+				<< "\n\tNary = " << (int)e.val.op->nary
 				<< PRINT_DEBUG(c, pd);
 		}
 	} else {

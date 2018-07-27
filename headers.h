@@ -97,6 +97,7 @@ struct ParseData {
 
 	ifstream *is;
 	uint16_t line_nr = 0;
+	uint16_t char_pos = 0;
 	uint16_t parentheses = 0;
 	stack<int8_t> balance;
 };

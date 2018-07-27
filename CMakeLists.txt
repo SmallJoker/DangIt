@@ -18,7 +18,7 @@ include_directories(${PROJECT_SOURCE_DIR})
 if (MSVC)
 
 else ()
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pg")
 endif ()
 
 

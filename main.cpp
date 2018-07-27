@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
 	dump("Elements", elements);
 	dump("Operator Stack", operator_stack);
 
-	simplifyElements(vars, elements);
+	//simplifyElements(vars, elements);
 	/*
 		number myvar = 33 * (5 - 2) + othervar
 
